@@ -35,6 +35,20 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
+      - name: Verify manifest components exist in APK
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' -type f | head -1)
+          for component in \
+            snd/sketchpilot/app/MainActivity \
+            snd/sketchpilot/app/SketchPilotApp \
+            snd/sketchpilot/app/McpService; do
+            unzip -p "$APK" classes.dex | grep -a -q "$component" || {
+              echo "FAIL: missing DEX class $component"
+              exit 1
+            }
+          done
+          echo "PASS: all manifest components are present in the APK"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
