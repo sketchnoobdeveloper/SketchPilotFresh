@@ -76,10 +76,10 @@ class McpService : Service() {
 
                 val bytes = response.toByteArray(Charsets.UTF_8)
                 val out = socket.getOutputStream()
-                out.write(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" +
-                        "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray(),
-                )
+                val header = ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" +
+                    "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n")
+                    .toByteArray(Charsets.UTF_8)
+                out.write(header)
                 out.write(bytes)
                 out.flush()
             }
