@@ -35,21 +35,32 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import snd.sketchpilot.core.project.OfflineProjectRepository
+import snd.sketchpilot.core.project.TransactionManager
 import snd.sketchpilot.core.security.AuditLog
 import snd.sketchpilot.core.security.Capability
 import snd.sketchpilot.core.security.PermissionPolicy
+import snd.sketchpilot.core.sketchware.ProjectStore
 import snd.sketchpilot.core.tools.ToolRegistry
+import java.io.File
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val secrets = SecretStore(this)
-        val repository = OfflineProjectRepository(Environment.getExternalStorageDirectory())
+        val storageRoot = Environment.getExternalStorageDirectory()
+        val repository = OfflineProjectRepository(storageRoot)
+        val transactions = TransactionManager(
+            ProjectStore(storageRoot),
+            File(cacheDir, "backups"),
+        )
         val registry = ToolRegistry(
             repository,
-            PermissionPolicy(setOf(Capability.READ, Capability.MCP_CONTROL)),
+            PermissionPolicy(
+                setOf(Capability.READ, Capability.WRITE, Capability.MCP_CONTROL),
+            ),
             AuditLog(),
+            transactions,
         )
         setContent { SketchPilotTheme { Root(registry, secrets) } }
     }
