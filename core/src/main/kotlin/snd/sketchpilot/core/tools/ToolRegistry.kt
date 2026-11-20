@@ -89,7 +89,11 @@ class ToolRegistry(
 
     fun list(): List<ToolSpec> = readOnlyTools.filter { policy.has(it.capability) }
 
-    fun call(name: String, args: Map<String, String>, actor: String = "local"): ToolResult {
+    fun call(
+        name: String,
+        args: Map<String, String> = emptyMap(),
+        actor: String = "local",
+    ): ToolResult {
         val spec = readOnlyTools.firstOrNull { it.name == name }
             ?: return ToolResult(false, "unknown tool: $name").also {
                 audit.record(actor, name, false)
