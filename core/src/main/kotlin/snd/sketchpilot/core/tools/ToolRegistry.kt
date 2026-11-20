@@ -8,9 +8,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import snd.sketchpilot.core.project.ChangeSet
+import snd.sketchpilot.core.project.ComponentEditor
 import snd.sketchpilot.core.project.DebugAnalyzer
+import snd.sketchpilot.core.project.LibraryEditor
 import snd.sketchpilot.core.project.Diff
 import snd.sketchpilot.core.project.LogicEditor
+import snd.sketchpilot.core.project.ProjectValidator
 import snd.sketchpilot.core.project.ResourceValidator
 import snd.sketchpilot.core.project.ProjectRepository
 import snd.sketchpilot.core.project.TransactionManager
@@ -112,9 +115,71 @@ class ToolRegistry(
             schema("sc_id"),
             Capability.READ,
         ),
+        ToolSpec(
+            "sketchpilot.component.add",
+            "Stage a native component registration",
+            schema("sc_id", "section", "component_id", "type"),
+            Capability.WRITE,
+        ),
+        ToolSpec(
+            "sketchpilot.component.configure",
+            "Stage a component parameter update",
+            schema("sc_id", "section", "component_id", "param", "value"),
+            Capability.WRITE,
+        ),
+        ToolSpec(
+            "sketchpilot.component.remove",
+            "Stage a component removal",
+            schema("sc_id", "section", "component_id"),
+            Capability.WRITE,
+        ),
+        ToolSpec(
+            "sketchpilot.library.install",
+            "Stage a library registration",
+            schema("sc_id", "name"),
+            Capability.WRITE,
+        ),
+        ToolSpec(
+            "sketchpilot.library.remove",
+            "Stage a library removal",
+            schema("sc_id", "name"),
+            Capability.WRITE,
+        ),
+        ToolSpec(
+            "sketchpilot.library.validate",
+            "Validate the native library registry",
+            schema("sc_id"),
+            Capability.READ,
+        ),
+        ToolSpec(
+            "sketchpilot.project.backup",
+            "Create a verified backup archive",
+            schema("sc_id"),
+            Capability.READ,
+        ),
+        ToolSpec(
+            "sketchpilot.build.validate",
+            "Validate project structure before a build",
+            schema("sc_id"),
+            Capability.READ,
+        ),
+        ToolSpec(
+            "sketchpilot.build.inspect_errors",
+            "Inspect last host build errors",
+            schema("sc_id"),
+            Capability.READ,
+        ),
+        ToolSpec(
+            "sketchpilot.build.compile",
+            "Host build execution is unavailable until device integration is verified",
+            schema("sc_id"),
+            Capability.BUILD,
+        ),
     )
 
     fun list(): List<ToolSpec> = tools.filter { policy.has(it.capability) }
+
+    fun stagedChanges(): List<ChangeSet> = staged.values.sortedByDescending { it.createdAtMillis }
 
     fun call(
         name: String,
@@ -321,7 +386,97 @@ class ToolRegistry(
             ToolResult(true, if (issues.isEmpty()) "valid" else issues.joinToString("\n"))
         }
 
+        "sketchpilot.component.add" -> stageLogicChange(args, actor) { payload, section ->
+            ComponentEditor.add(
+                payload,
+                section,
+                args["component_id"] ?: error("component_id is required"),
+                args["type"]?.toIntOrNull() ?: error("valid type is required"),
+                listOf("param1", "param2", "param3").map { args[it].orEmpty() },
+            )
+        }
+
+        "sketchpilot.component.configure" -> stageLogicChange(args, actor) { payload, section ->
+            ComponentEditor.configure(
+                payload,
+                section,
+                args["component_id"] ?: error("component_id is required"),
+                args["param"] ?: error("param is required"),
+                args["value"] ?: error("value is required"),
+            )
+        }
+
+        "sketchpilot.component.remove" -> stageLogicChange(args, actor) { payload, section ->
+            ComponentEditor.remove(
+                payload,
+                section,
+                args["component_id"] ?: error("component_id is required"),
+            )
+        }
+
+        "sketchpilot.library.install" -> {
+            val tx = transactions ?: return ToolResult(false, "transaction engine unavailable")
+            val name = args["name"] ?: return ToolResult(false, "name is required")
+            val changeSet = tx.stage(requireId(args), actor) { project ->
+                val library = project.payloads["library"] ?: error("no library payload")
+                project.payloads["library"] = LibraryEditor.install(library, name)
+            }
+            staged[changeSet.id] = changeSet
+            ToolResult(true, "STAGED ${changeSet.id}\n" + Diff.render(changeSet))
+        }
+
+        "sketchpilot.library.remove" -> {
+            val tx = transactions ?: return ToolResult(false, "transaction engine unavailable")
+            val name = args["name"] ?: return ToolResult(false, "name is required")
+            val changeSet = tx.stage(requireId(args), actor) { project ->
+                val library = project.payloads["library"] ?: error("no library payload")
+                project.payloads["library"] = LibraryEditor.remove(library, name)
+            }
+            staged[changeSet.id] = changeSet
+            ToolResult(true, "STAGED ${changeSet.id}\n" + Diff.render(changeSet))
+        }
+
+        "sketchpilot.library.validate" -> {
+            val projectStore = store ?: return ToolResult(false, "project store unavailable")
+            val issues = LibraryEditor.validate(
+                projectStore.load(requireId(args)).payloads["library"].orEmpty(),
+            )
+            ToolResult(true, if (issues.isEmpty()) "valid" else issues.joinToString("\n"))
+        }
+
+        "sketchpilot.project.backup" -> {
+            val tx = transactions ?: return ToolResult(false, "transaction engine unavailable")
+            ToolResult(true, tx.backup(requireId(args)))
+        }
+
+        "sketchpilot.build.validate" -> {
+            val issues = ProjectValidator.validate(repository.read(requireId(args)))
+            ToolResult(true, if (issues.isEmpty()) "valid" else issues.joinToString("\n"))
+        }
+
+        "sketchpilot.build.inspect_errors" -> call("sketchpilot.debug.analyze", args, actor)
+
+        "sketchpilot.build.compile" -> ToolResult(
+            false,
+            "unavailable: host build execution requires verified device/LSPosed integration",
+        )
+
         else -> ToolResult(false, "unsupported tool: $name")
+    }
+
+    private fun stageLogicChange(
+        args: Map<String, String>,
+        actor: String,
+        edit: (String, String) -> String,
+    ): ToolResult {
+        val tx = transactions ?: return ToolResult(false, "transaction engine unavailable")
+        val section = args["section"] ?: return ToolResult(false, "section is required")
+        val changeSet = tx.stage(requireId(args), actor) { project ->
+            val logic = project.payloads["logic"] ?: error("no logic payload")
+            project.payloads["logic"] = edit(logic, section)
+        }
+        staged[changeSet.id] = changeSet
+        return ToolResult(true, "STAGED ${changeSet.id}\n" + Diff.render(changeSet))
     }
 
     private fun requireId(args: Map<String, String>): String =

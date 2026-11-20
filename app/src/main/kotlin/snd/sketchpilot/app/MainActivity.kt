@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -36,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import snd.sketchpilot.core.agent.AgentRuntime
 import snd.sketchpilot.core.agent.AgentTask
+import snd.sketchpilot.core.project.Diff
 import snd.sketchpilot.core.project.OfflineProjectRepository
 import snd.sketchpilot.core.project.TransactionManager
 import snd.sketchpilot.core.security.AuditLog
@@ -82,7 +84,7 @@ private fun SketchPilotTheme(content: @Composable () -> Unit) {
 @Composable
 private fun Root(registry: ToolRegistry, secrets: SecretStore, runtime: AgentRuntime) {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Dashboard", "Projects", "Agent", "Providers", "MCP")
+    val tabs = listOf("Dashboard", "Projects", "Agent", "Changes", "Providers", "MCP")
     Scaffold(bottomBar = {
         NavigationBar {
             tabs.forEachIndexed { index, label ->
@@ -101,8 +103,9 @@ private fun Root(registry: ToolRegistry, secrets: SecretStore, runtime: AgentRun
                     0 -> Dashboard()
                     1 -> Projects(registry)
                     2 -> AgentPanel(registry, runtime)
-                    3 -> Providers(secrets)
-                    4 -> McpPanel(registry, secrets)
+                    3 -> ChangesPanel(registry)
+                    4 -> Providers(secrets)
+                    5 -> McpPanel(registry, secrets)
                 }
             }
         }
@@ -132,6 +135,37 @@ private fun Projects(registry: ToolRegistry) {
     }
     Text("Projects", style = MaterialTheme.typography.headlineSmall)
     Text(result)
+}
+
+@Composable
+private fun ChangesPanel(registry: ToolRegistry) {
+    var revision by remember { mutableIntStateOf(0) }
+    val changes = remember(revision) { registry.stagedChanges() }
+    Text("Changes", style = MaterialTheme.typography.headlineSmall)
+    if (changes.isEmpty()) {
+        Text("No staged changes. Use an edit tool or ask the agent to stage one.")
+    }
+    changes.forEach { changeSet ->
+        androidx.compose.material3.Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp)) {
+                Text(changeSet.scId + " · " + changeSet.id.take(8))
+                Text(Diff.render(changeSet))
+                Row {
+                    Button(onClick = {
+                        registry.call(
+                            "sketchpilot.change.commit",
+                            mapOf("change_set_id" to changeSet.id, "approved" to "true"),
+                        )
+                        revision++
+                    }) { Text("Approve") }
+                    Button(onClick = {
+                        registry.call("sketchpilot.change.rollback", mapOf("change_set_id" to changeSet.id))
+                        revision++
+                    }) { Text("Rollback") }
+                }
+            }
+        }
+    }
 }
 
 @Composable

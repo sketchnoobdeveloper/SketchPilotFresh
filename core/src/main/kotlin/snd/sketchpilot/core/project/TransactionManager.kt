@@ -93,6 +93,10 @@ class TransactionManager(
         TxResult(true, "rolled back and verified", changeSet.id)
     }
 
+    fun backup(scId: String): String = lock(scId).withLock {
+        createBackup(store.load(scId)).absolutePath
+    }
+
     fun history(scId: String): List<String> = history[scId]?.toList() ?: emptyList()
 
     private fun record(scId: String, entry: String) {
