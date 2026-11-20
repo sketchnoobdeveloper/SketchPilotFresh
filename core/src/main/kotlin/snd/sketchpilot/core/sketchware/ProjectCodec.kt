@@ -71,7 +71,8 @@ class ProjectCodec(private val root: File) {
             )
         }
 
-        val components = logicSections.filter { it.name.endsWith("_components") }
+        val components = SectionedCodec.parse(payload(scId, "logic"))
+            .filter { it.name.endsWith("_components") }
             .flatMap { section -> section.lines.map(::obj) }
             .map { row ->
                 ComponentSnapshot(

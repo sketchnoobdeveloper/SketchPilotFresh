@@ -4,6 +4,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import snd.sketchpilot.core.project.ProjectRepository
@@ -127,7 +128,7 @@ class ToolRegistry(
                     put("screens", s.screens.size)
                     put("components", s.components.size)
                     put("libraries", s.libraries.size)
-                    put("issues", json.encodeToString(JsonArray(repository.validate(s.scId).map { json.encodeToString(it) })))
+                    put("issues", json.encodeToString(JsonArray(repository.validate(s.scId).map { JsonPrimitive(it) })))
                 }.toString(),
             )
         }
@@ -161,7 +162,7 @@ class ToolRegistry(
                 buildJsonObject {
                     put("section", section.name)
                     put("blocks", section.blocks.size)
-                    put("opcodes", json.encodeToString(JsonArray(section.blocks.map { it.opCode }.distinct().map { json.encodeToString(it) })))
+                    put("opcodes", json.encodeToString(JsonArray(section.blocks.map { it.opCode }.distinct().map { JsonPrimitive(it) })))
                 }
             })))
         }
@@ -175,12 +176,12 @@ class ToolRegistry(
 
         "sketchpilot.library.inspect" -> {
             val s = repository.read(requireId(args))
-            ToolResult(true, json.encodeToString(JsonArray(s.libraries.map { json.encodeToString(it) })))
+            ToolResult(true, json.encodeToString(JsonArray(s.libraries.map { JsonPrimitive(it) })))
         }
 
         "sketchpilot.resource.list" -> {
             val s = repository.read(requireId(args))
-            ToolResult(true, json.encodeToString(JsonArray(s.resources.map { json.encodeToString(it) })))
+            ToolResult(true, json.encodeToString(JsonArray(s.resources.map { JsonPrimitive(it) })))
         }
 
         else -> ToolResult(false, "unsupported tool: $name")
