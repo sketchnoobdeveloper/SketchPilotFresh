@@ -10,7 +10,7 @@
     <application
         android:name="snd.sketchpilot.app.SketchPilotApp"
         android:allowBackup="false"
-        android:label="SketchPilot"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/SketchPilotTheme">
 

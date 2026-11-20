@@ -19,6 +19,8 @@ android {
 
     defaultConfig {
         applicationId = "snd.sketchpilot"
+        applicationIdSuffix = ".fresh"
+        resValue("string", "app_name", "SketchPilot Fresh")
         minSdk = 26
         targetSdk = 34
         versionCode = 2

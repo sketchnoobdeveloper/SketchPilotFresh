@@ -82,19 +82,22 @@ class SketchPilotEntry : IXposedHookLoadPackage {
     }
 
     private fun openCompanion(activity: Activity) {
-        runCatching {
-            val intent = Intent(Intent.ACTION_VIEW).setComponent(
-                ComponentName(COMPANION_PACKAGE, "$COMPANION_PACKAGE.MainActivity"),
-            )
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            activity.startActivity(intent)
-        }.onFailure { Log.w(TAG, "could not open companion", it) }
+        listOf("$COMPANION_PACKAGE.fresh", COMPANION_PACKAGE).forEach { packageName ->
+            runCatching {
+                val intent = Intent(Intent.ACTION_VIEW).setComponent(
+                    ComponentName(packageName, COMPANION_ACTIVITY),
+                )
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                activity.startActivity(intent)
+            }.onFailure { Log.w(TAG, "could not open companion $packageName", it) }
+        }
     }
 
     private companion object {
         const val TAG = "SketchPilot"
         const val HOST_PACKAGE = "pro.sketchware"
         const val COMPANION_PACKAGE = "snd.sketchpilot"
+        const val COMPANION_ACTIVITY = "snd.sketchpilot.app.MainActivity"
         const val DESIGN_ACTIVITY = "com.besome.sketch.design.DesignActivity"
         const val ENTRY_TAG = "sketchpilot_entry"
     }
