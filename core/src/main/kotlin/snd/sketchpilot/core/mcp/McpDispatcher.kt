@@ -65,8 +65,54 @@ class McpDispatcher(private val registry: ToolRegistry) {
                 }
             }
 
-            "resources/list", "prompts/list" -> buildJsonObject {
-                put(if (method == "resources/list") "resources" else "prompts", JsonArray(emptyList()))
+            "resources/list" -> buildJsonObject {
+                put("resources", JsonArray(listOf(buildJsonObject {
+                    put("uri", "sketchpilot://projects")
+                    put("name", "Sketchware projects")
+                    put("description", "Read-only list of discoverable projects")
+                    put("mimeType", "application/json")
+                })))
+            }
+
+            "resources/read" -> {
+                val params = request["params"] as? JsonObject
+                val uri = (params?.get("uri") as? JsonPrimitive)?.content.orEmpty()
+                if (uri != "sketchpilot://projects") {
+                    return error(id, -32602, "Unknown resource: $uri")
+                }
+                val content = registry.call("sketchpilot.project.list").content
+                buildJsonObject {
+                    put("contents", JsonArray(listOf(buildJsonObject {
+                        put("uri", uri)
+                        put("mimeType", "application/json")
+                        put("text", content)
+                    })))
+                }
+            }
+
+            "prompts/list" -> buildJsonObject {
+                put("prompts", JsonArray(listOf(buildJsonObject {
+                    put("name", "inspect-project")
+                    put("description", "Inspect a Sketchware project before changing it")
+                })))
+            }
+
+            "prompts/get" -> {
+                val params = request["params"] as? JsonObject
+                val name = (params?.get("name") as? JsonPrimitive)?.content.orEmpty()
+                if (name != "inspect-project") return error(id, -32602, "Unknown prompt: $name")
+                val args = params?.get("arguments") as? JsonObject
+                val scId = (args?.get("sc_id") as? JsonPrimitive)?.content.orEmpty()
+                buildJsonObject {
+                    put("description", "Read-only project inspection workflow")
+                    put("messages", JsonArray(listOf(buildJsonObject {
+                        put("role", "user")
+                        put("content", buildJsonObject {
+                            put("type", "text")
+                            put("text", "Inspect project $scId using sketchpilot.project.inspect, then report its screens, components and validation issues. Do not modify anything.")
+                        })
+                    })))
+                }
             }
 
             else -> return error(id, -32601, "Method not found: $method")

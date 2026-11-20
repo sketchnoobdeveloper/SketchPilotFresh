@@ -8,10 +8,13 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import snd.sketchpilot.core.project.ChangeSet
+import snd.sketchpilot.core.project.DebugAnalyzer
 import snd.sketchpilot.core.project.Diff
+import snd.sketchpilot.core.project.LogicEditor
 import snd.sketchpilot.core.project.ProjectRepository
 import snd.sketchpilot.core.project.TransactionManager
 import snd.sketchpilot.core.project.ViewEditor
+import snd.sketchpilot.core.sketchware.ProjectStore
 import snd.sketchpilot.core.security.AuditLog
 import snd.sketchpilot.core.security.Capability
 import snd.sketchpilot.core.security.PermissionPolicy
@@ -33,6 +36,7 @@ class ToolRegistry(
     private val policy: PermissionPolicy,
     private val audit: AuditLog,
     private val transactions: TransactionManager? = null,
+    private val store: ProjectStore? = null,
 ) {
     private val json = Json
     private val staged = ConcurrentHashMap<String, ChangeSet>()
@@ -80,6 +84,24 @@ class ToolRegistry(
         ToolSpec(
             "sketchpilot.project.history",
             "Show change history for a project",
+            schema("sc_id"),
+            Capability.READ,
+        ),
+        ToolSpec(
+            "sketchpilot.logic.add_block",
+            "Stage a new native block in an event section",
+            schema("sc_id", "section", "op_code", "spec", "parameters"),
+            Capability.WRITE,
+        ),
+        ToolSpec(
+            "sketchpilot.ui.validate_layout",
+            "Validate project structure and view hierarchy",
+            schema("sc_id"),
+            Capability.READ,
+        ),
+        ToolSpec(
+            "sketchpilot.debug.analyze",
+            "Analyze the host compile log",
             schema("sc_id"),
             Capability.READ,
         ),
@@ -239,6 +261,51 @@ class ToolRegistry(
         "sketchpilot.project.history" -> {
             val tx = transactions ?: return ToolResult(false, "transaction engine unavailable")
             ToolResult(true, tx.history(requireId(args)).joinToString("\n").ifEmpty { "no history" })
+        }
+
+        "sketchpilot.logic.add_block" -> {
+            val tx = transactions ?: return ToolResult(false, "transaction engine unavailable")
+            val scId = requireId(args)
+            val section = args["section"] ?: return ToolResult(false, "section is required")
+            val opCode = args["op_code"] ?: return ToolResult(false, "op_code is required")
+            val parameters = args["parameters"].orEmpty()
+                .split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            val changeSet = tx.stage(scId, actor) { project ->
+                val logic = project.payloads["logic"] ?: error("no logic payload")
+                project.payloads["logic"] = LogicEditor.appendBlock(
+                    logic,
+                    section,
+                    opCode,
+                    args["spec"].orEmpty(),
+                    args["type"] ?: " ",
+                    parameters,
+                )
+            }
+            staged[changeSet.id] = changeSet
+            ToolResult(true, "STAGED ${changeSet.id}\n" + Diff.render(changeSet))
+        }
+
+        "sketchpilot.ui.validate_layout" -> {
+            val issues = repository.validate(requireId(args))
+            ToolResult(true, if (issues.isEmpty()) "valid" else issues.joinToString("\n"))
+        }
+
+        "sketchpilot.debug.analyze" -> {
+            val projectStore = store ?: return ToolResult(false, "project store unavailable")
+            val log = projectStore.load(requireId(args)).payloads["compile_log"].orEmpty()
+            val report = DebugAnalyzer.analyze(log)
+            ToolResult(
+                true,
+                buildJsonObject {
+                    put("lines", report.totalLines)
+                    put("errors", report.errors.size)
+                    put("warnings", report.warnings.size)
+                    put("categories", json.encodeToString(JsonObject(report.categories
+                        .mapValues { JsonPrimitive(it.value) })))
+                    put("sample", json.encodeToString(JsonArray(report.errors.take(10)
+                        .map { JsonPrimitive(it) })))
+                }.toString(),
+            )
         }
 
         else -> ToolResult(false, "unsupported tool: $name")

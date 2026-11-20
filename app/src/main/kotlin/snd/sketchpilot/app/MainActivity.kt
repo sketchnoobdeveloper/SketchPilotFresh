@@ -34,6 +34,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import snd.sketchpilot.core.agent.AgentRuntime
+import snd.sketchpilot.core.agent.AgentTask
 import snd.sketchpilot.core.project.OfflineProjectRepository
 import snd.sketchpilot.core.project.TransactionManager
 import snd.sketchpilot.core.security.AuditLog
@@ -50,10 +52,8 @@ class MainActivity : ComponentActivity() {
         val secrets = SecretStore(this)
         val storageRoot = Environment.getExternalStorageDirectory()
         val repository = OfflineProjectRepository(storageRoot)
-        val transactions = TransactionManager(
-            ProjectStore(storageRoot),
-            File(cacheDir, "backups"),
-        )
+        val store = ProjectStore(storageRoot)
+        val transactions = TransactionManager(store, File(cacheDir, "backups"))
         val registry = ToolRegistry(
             repository,
             PermissionPolicy(
@@ -61,8 +61,10 @@ class MainActivity : ComponentActivity() {
             ),
             AuditLog(),
             transactions,
+            store,
         )
-        setContent { SketchPilotTheme { Root(registry, secrets) } }
+        val runtime = AgentRuntime { tool, args -> registry.call(tool, args) }
+        setContent { SketchPilotTheme { Root(registry, secrets, runtime) } }
     }
 }
 
@@ -78,9 +80,9 @@ private fun SketchPilotTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Root(registry: ToolRegistry, secrets: SecretStore) {
+private fun Root(registry: ToolRegistry, secrets: SecretStore, runtime: AgentRuntime) {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Dashboard", "Projects", "Providers", "MCP")
+    val tabs = listOf("Dashboard", "Projects", "Agent", "Providers", "MCP")
     Scaffold(bottomBar = {
         NavigationBar {
             tabs.forEachIndexed { index, label ->
@@ -98,8 +100,9 @@ private fun Root(registry: ToolRegistry, secrets: SecretStore) {
                 when (tab) {
                     0 -> Dashboard()
                     1 -> Projects(registry)
-                    2 -> Providers(secrets)
-                    3 -> McpPanel(registry, secrets)
+                    2 -> AgentPanel(registry, runtime)
+                    3 -> Providers(secrets)
+                    4 -> McpPanel(registry, secrets)
                 }
             }
         }
@@ -129,6 +132,30 @@ private fun Projects(registry: ToolRegistry) {
     }
     Text("Projects", style = MaterialTheme.typography.headlineSmall)
     Text(result)
+}
+
+@Composable
+private fun AgentPanel(registry: ToolRegistry, runtime: AgentRuntime) {
+    var instruction by remember { mutableStateOf("inspect the ui layout") }
+    var trace by remember { mutableStateOf("Ready.") }
+    Text("Agent", style = MaterialTheme.typography.headlineSmall)
+    OutlinedTextField(
+        instruction,
+        { instruction = it },
+        label = { Text("Instruction") },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Button(onClick = {
+        val projectId = runCatching {
+            val raw = registry.call("sketchpilot.project.list").content
+            Regex("\"sc_id\"\\s*:\\s*\"([^\"]+)\"").find(raw)?.groupValues?.get(1)
+        }.getOrNull()
+        val task = AgentTask("ui-" + System.currentTimeMillis(), instruction, projectId)
+        val state = runtime.plan(task, registry.list().map { it.name }.toSet())
+        val finished = runtime.run(state)
+        trace = finished.trace.joinToString("\n") + "\nstatus: ${finished.status}"
+    }) { Text("Plan and run") }
+    Text(trace)
 }
 
 @Composable

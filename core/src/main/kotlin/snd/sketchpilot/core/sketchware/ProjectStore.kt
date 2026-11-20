@@ -21,6 +21,7 @@ class ProjectStore(private val root: File) {
         "project", "file", "view", "logic", "library", "resource",
         "project_config", "view_root", "build_config", "custom_blocks",
         "permission", "import", "local_library", "proguard-rules.pro", "stringfog", "proguard",
+        "compile_log",
     )
 
     fun load(scId: String): StoredProject {
