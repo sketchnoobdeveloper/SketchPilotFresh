@@ -22,6 +22,7 @@ import snd.sketchpilot.core.sketchware.ProjectStore
 import snd.sketchpilot.core.security.AuditLog
 import snd.sketchpilot.core.security.Capability
 import snd.sketchpilot.core.security.PermissionPolicy
+import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -174,6 +175,24 @@ class ToolRegistry(
             "Host build execution is unavailable until device integration is verified",
             schema("sc_id"),
             Capability.BUILD,
+        ),
+        ToolSpec(
+            "sketchpilot.resource.import",
+            "Import a base64 asset into the project files directory",
+            schema("sc_id", "path", "content_base64", "overwrite"),
+            Capability.WRITE,
+        ),
+        ToolSpec(
+            "sketchpilot.resource.list_files",
+            "List imported project asset files",
+            schema("sc_id"),
+            Capability.READ,
+        ),
+        ToolSpec(
+            "sketchpilot.project.export",
+            "Export a portable verified backup archive",
+            schema("sc_id"),
+            Capability.READ,
         ),
     )
 
@@ -460,6 +479,29 @@ class ToolRegistry(
             false,
             "unavailable: host build execution requires verified device/LSPosed integration",
         )
+
+        "sketchpilot.resource.import" -> {
+            val projectStore = store ?: return ToolResult(false, "project store unavailable")
+            val path = args["path"] ?: return ToolResult(false, "path is required")
+            val encoded = args["content_base64"] ?: return ToolResult(false, "content_base64 is required")
+            runCatching {
+                val bytes = Base64.getDecoder().decode(encoded)
+                val overwrite = args["overwrite"]?.equals("true", ignoreCase = true) == true
+                projectStore.writeAsset(requireId(args), path, bytes, overwrite)
+                ToolResult(true, "imported $path (${bytes.size} bytes)")
+            }.getOrElse { ToolResult(false, it.message ?: "import failed") }
+        }
+
+        "sketchpilot.resource.list_files" -> {
+            val projectStore = store ?: return ToolResult(false, "project store unavailable")
+            val files = projectStore.listAssets(requireId(args))
+            ToolResult(true, json.encodeToString(JsonArray(files.map { JsonPrimitive(it) })))
+        }
+
+        "sketchpilot.project.export" -> {
+            val tx = transactions ?: return ToolResult(false, "transaction engine unavailable")
+            ToolResult(true, "format=portable-backup\n" + tx.backup(requireId(args)))
+        }
 
         else -> ToolResult(false, "unsupported tool: $name")
     }

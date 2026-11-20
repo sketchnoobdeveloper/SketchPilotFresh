@@ -67,6 +67,36 @@ class ProjectStore(private val root: File) {
         }
     }
 
+    fun resolveAsset(scId: String, relative: String): File {
+        val normalized = relative.replace('\\', '/').trim()
+        require(normalized.isNotBlank()) { "asset path is empty" }
+        require(!normalized.startsWith("/") && !normalized.contains(":")) {
+            "absolute asset paths are not allowed"
+        }
+        require(normalized.split('/').none { it == ".." }) { "path traversal is not allowed" }
+        val base = File(root, "data/$scId/files").canonicalFile
+        val target = File(base, normalized).canonicalFile
+        require(target.path == base.path || target.path.startsWith(base.path + File.separator)) {
+            "asset path escapes the project directory"
+        }
+        return target
+    }
+
+    fun writeAsset(scId: String, relative: String, bytes: ByteArray, overwrite: Boolean = false) {
+        val target = resolveAsset(scId, relative)
+        require(overwrite || !target.exists()) { "asset already exists: $relative" }
+        Atomic.write(target, bytes)
+    }
+
+    fun listAssets(scId: String): List<String> {
+        val base = File(root, "data/$scId/files")
+        if (!base.isDirectory) return emptyList()
+        return base.walkTopDown().filter { it.isFile }
+            .map { it.relativeTo(base).path.replace(File.separatorChar, '/') }
+            .sorted()
+            .toList()
+    }
+
     companion object {
         const val META_KEY = "meta/project"
     }
