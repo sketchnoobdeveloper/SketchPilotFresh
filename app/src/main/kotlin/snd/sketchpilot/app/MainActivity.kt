@@ -51,6 +51,21 @@ import java.util.UUID
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val failure = runCatching { start() }.exceptionOrNull()
+        if (failure != null) {
+            val message = failure.stackTraceToString()
+            android.util.Log.e("SketchPilot", "startup failed", failure)
+            runCatching {
+                setContent {
+                    SketchPilotTheme {
+                        Text("SketchPilot failed to start:\n$message")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun start() {
         val secrets = SecretStore(this)
         val storageRoot = Environment.getExternalStorageDirectory()
         val repository = OfflineProjectRepository(storageRoot)
@@ -123,6 +138,10 @@ private fun Dashboard() {
     Text("Host: pro.sketchware ($hostVersion)")
     Text("Mode: Read Only")
     Text("Integration: LSPosed native entry (device verification pending)")
+    val crash = remember { Diagnostics.lastCrash(context) }
+    if (crash != null) {
+        Text("Last crash:\n$crash", color = MaterialTheme.colorScheme.error)
+    }
 }
 
 @Composable
