@@ -18,11 +18,8 @@ object ComponentEditor {
         componentId: String,
         type: Int,
         params: List<String> = listOf("", "", ""),
-    ): String = update(logicPayload, section, componentId) { rows, index ->
-        require(rows.none { it.containsKey("componentId") &&
-            (it["componentId"] as? JsonPrimitive)?.content == componentId }) {
-            "component already exists: $componentId"
-        }
+    ): String = update(logicPayload, section, componentId, requireExisting = false) { rows, _ ->
+        require(rows.none { idOf(it) == componentId }) { "component already exists: $componentId" }
         val values = (params + listOf("", "", "")).take(3)
         rows.add(json.encodeToString(buildJsonObject {
             put("componentId", componentId)
@@ -42,11 +39,10 @@ object ComponentEditor {
     ): String {
         require(param in setOf("param1", "param2", "param3")) { "invalid component parameter: $param" }
         return update(logicPayload, section, componentId) { rows, index ->
-            require(index >= 0) { "component not found: $componentId" }
-            val row = rows[index]
+            val row = json.parseToJsonElement(rows[index]) as JsonObject
             val mutable = row.toMutableMap()
             mutable[param] = JsonPrimitive(value)
-            rows[index] = JsonObject(mutable)
+            rows[index] = json.encodeToString(JsonObject(mutable))
         }
     }
 
@@ -55,7 +51,6 @@ object ComponentEditor {
         section: String,
         componentId: String,
     ): String = update(logicPayload, section, componentId) { rows, index ->
-        require(index >= 0) { "component not found: $componentId" }
         rows.removeAt(index)
     }
 
@@ -63,21 +58,23 @@ object ComponentEditor {
         logicPayload: String,
         section: String,
         componentId: String,
+        requireExisting: Boolean = true,
         action: (MutableList<String>, Int) -> Unit,
     ): String {
         val sections = SectionedCodec.parse(logicPayload).toMutableList()
         val sectionIndex = sections.indexOfFirst { it.name == section }
         require(sectionIndex >= 0) { "component section not found: $section" }
         val rows = sections[sectionIndex].lines.toMutableList()
-        val rowIndex = rows.indexOfFirst { line ->
-            runCatching {
-                (json.parseToJsonElement(line) as? JsonObject)?.get("componentId")?.let {
-                    (it as? JsonPrimitive)?.content
-                } == componentId
-            }.getOrDefault(false)
-        }
+        val rowIndex = rows.indexOfFirst { idOf(it) == componentId }
+        if (requireExisting) require(rowIndex >= 0) { "component not found: $componentId" }
         action(rows, rowIndex)
         sections[sectionIndex] = sections[sectionIndex].copy(lines = rows)
         return SectionedCodec.serialize(sections)
     }
+
+    private fun idOf(line: String): String? = runCatching {
+        (json.parseToJsonElement(line) as? JsonObject)?.get("componentId")?.let {
+            (it as? JsonPrimitive)?.content
+        }
+    }.getOrNull()
 }
