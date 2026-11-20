@@ -11,6 +11,7 @@ import snd.sketchpilot.core.project.ChangeSet
 import snd.sketchpilot.core.project.DebugAnalyzer
 import snd.sketchpilot.core.project.Diff
 import snd.sketchpilot.core.project.LogicEditor
+import snd.sketchpilot.core.project.ResourceValidator
 import snd.sketchpilot.core.project.ProjectRepository
 import snd.sketchpilot.core.project.TransactionManager
 import snd.sketchpilot.core.project.ViewEditor
@@ -102,6 +103,12 @@ class ToolRegistry(
         ToolSpec(
             "sketchpilot.debug.analyze",
             "Analyze the host compile log",
+            schema("sc_id"),
+            Capability.READ,
+        ),
+        ToolSpec(
+            "sketchpilot.resource.validate",
+            "Validate resource references in a project",
             schema("sc_id"),
             Capability.READ,
         ),
@@ -306,6 +313,12 @@ class ToolRegistry(
                         .map { JsonPrimitive(it) })))
                 }.toString(),
             )
+        }
+
+        "sketchpilot.resource.validate" -> {
+            val projectStore = store ?: return ToolResult(false, "project store unavailable")
+            val issues = ResourceValidator.validate(projectStore.load(requireId(args)).payloads)
+            ToolResult(true, if (issues.isEmpty()) "valid" else issues.joinToString("\n"))
         }
 
         else -> ToolResult(false, "unsupported tool: $name")
