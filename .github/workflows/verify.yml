@@ -38,14 +38,19 @@ jobs:
       - name: Verify manifest components exist in APK
         run: |
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -type f | head -1)
+          DEXES=$(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$')
           for component in \
             snd/sketchpilot/app/MainActivity \
             snd/sketchpilot/app/SketchPilotApp \
             snd/sketchpilot/app/McpService; do
-            unzip -p "$APK" classes.dex | grep -a -q "$component" || {
+            found=false
+            for dex in $DEXES; do
+              if unzip -p "$APK" "$dex" | grep -a -q "$component"; then found=true; break; fi
+            done
+            if [ "$found" != true ]; then
               echo "FAIL: missing DEX class $component"
               exit 1
-            }
+            fi
           done
           echo "PASS: all manifest components are present in the APK"
 
