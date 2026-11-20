@@ -23,6 +23,10 @@ class SketchPilotApp : Application() {
                 getExternalFilesDir(null)?.let { external ->
                     File(external, "sketchpilot-crash.txt").writeText(report)
                 }
+                runCatching {
+                    File(android.os.Environment.getExternalStorageDirectory(),
+                        "Download/sketchpilot-crash.txt").writeText(report)
+                }
             }.onFailure { Log.e(TAG, "could not write crash report", it) }
             previous?.uncaughtException(thread, error)
                 ?: Log.e(TAG, "unhandled exception", error)
