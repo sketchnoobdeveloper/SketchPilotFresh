@@ -68,7 +68,7 @@ class SketchPilotEntry : IXposedHookLoadPackage {
             return
         }
         val toolbar = activity.findViewById<ViewGroup>(toolbarId) ?: return
-        if (toolbar.findViewWithTag(ENTRY_TAG) != null) return
+        if (toolbar.findViewWithTag<View>(ENTRY_TAG) != null) return
 
         val button = ImageView(activity).apply {
             tag = ENTRY_TAG
