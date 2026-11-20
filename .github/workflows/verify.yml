@@ -35,6 +35,12 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
+      - name: Verify APK signing identity
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' -type f | head -1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | head -1)
+          "$APKSIGNER" verify --print-certs "$APK" | grep -i 'SHA-256 digest'
+
       - name: Verify manifest components exist in APK
         run: |
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -type f | head -1)
